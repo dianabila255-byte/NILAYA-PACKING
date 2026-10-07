@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Scan Resi & Validasi Multi-Item SKU - Nilaya</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <!-- HALAMAN LOGIN (MUNCUL PERTAMA KALI) -->
+    <div id="loginPage" class="flex items-center justify-center min-h-screen p-4">
+        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-200">
+            <div class="text-center mb-6">
+                <h1 class="text-2xl font-bold text-gray-800">🔐 Login Packer Gudang</h1>
+                <p class="text-gray-500 text-sm mt-1">Nilaya Warehouse Operations</p>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Nama Packer:</label>
+                    <input type="text" id="loginName" placeholder="Masukkan nama kamu..." 
+                        class="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">Password:</label>
+                    <input type="password" id="loginPassword" placeholder="Masukkan password (1234)..." 
+                        class="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                </div>
+                <button onclick="prosesLogin()" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-xl hover:bg-blue-700 transition shadow-md">
+                    Masuk ke Aplikasi
+                </button>
+                <p id="loginError" class="text-red-500 text-xs text-center font-semibold mt-2 hidden"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- APLIKASI UTAMA (DISEMBUNYIKAN SEBELUM LOGIN) -->
+    <div id="mainApp" class="container mx-auto max-w-5xl p-6 hidden">
+        <header class="mb-6 flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-xl shadow-md">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">📦 Sistem Scan Resi & Validasi SKU</h1>
+                <p class="text-gray-500 text-sm">Packer Aktif: <span id="activePackerName" class="font-bold text-blue-600">-</span></p>
+            </div>
+            <button onclick="logoutApp()" class="mt-2 md:mt-0 bg-red-100 text-red-600 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-red-200 transition">
+                🔒 Keluar (Logout)
+            </button>
+        </header>
+
+        <!-- STATUS PENYIMPANAN & TOMBOL RESET -->
+        <div class="bg-white p-4 rounded-xl shadow-md mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <span id="storageStatus" class="text-sm font-semibold text-gray-700">⏳ Memeriksa status data tersimpan...</span>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="resetDataHariIni()" class="bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-600 transition">
+                    🔄 Reset Sesi Hari Ini
+                </button>
+                <button onclick="clearAllLocalStorage()" class="bg-red-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition">
+                    🗑️ Hapus Semua Data & Cache
+                </button>
+            </div>
+        </div>
+
+        <!-- STEP 1: UPLOAD MULTI FILE EXPORT MARKETPLACE -->
+        <div class="bg-white p-6 rounded-xl shadow-md mb-6">
+            <h2 class="text-xl font-semibold mb-3 text-gray-700">1️⃣ Upload File Export Marketplace (Shopee + TikTok)</h2>
+            <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" multiple class="block w-full text-sm text-slate-500
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-full file:border-0
+                file:text-sm file:font-semibold
+                file:bg-blue-50 file:text-blue-700
+                hover:file:bg-blue-100 cursor-pointer mb-4" />
+            
+            <!-- Pengaturan Kolom Manual -->
+            <div id="columnMappingSection" class="hidden grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-gray-200">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Kolom Resi / Tracking:</label>
+                    <select id="colResi" class="w-full border rounded-lg p-2 text-sm bg-gray-50"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Kolom SKU (Wajib Seller SKU):</label>
+                    <select id="colSku" class="w-full border rounded-lg p-2 text-sm bg-gray-50 font-bold text-blue-700"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Kolom Nama Produk:</label>
+                    <select id="colProd" class="w-full border rounded-lg p-2 text-sm bg-gray-50"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1">Kolom Qty / Jumlah:</label>
+                    <select id="colQty" class="w-full border rounded-lg p-2 text-sm bg-gray-50"></select>
+                </div>
+                <div class="md:col-span-4">
+                    <button onclick="terapkanMappingKolom()" class="w-full bg-blue-600 text-white px-4 py-3 rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
+                        Gabungkan & Aktifkan Semua Database Resi
+                    </button>
+                </div>
+            </div>
+
+            <p id="fileStatus" class="text-sm text-gray-500 mt-2">Belum ada file yang di-upload.</p>
+        </div>
+
+        <!-- STEP 2: SCAN RESI -->
+        <div class="bg-white p-6 rounded-xl shadow-md mb-6" id="boxResi">
+            <h2 class="text-xl font-semibold mb-3 text-gray-700">2️⃣ Scan / Ketik Nomor Resi Kurir</h2>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nomor Resi Paket / Tracking ID:</label>
+                <input type="text" id="resiInput" placeholder="Arahkan kursor ke sini lalu scan barcode RESI..." 
+                    class="w-full border border-gray-300 rounded-lg p-3 text-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" disabled />
+            </div>
+            <button onclick="prosesResi()" id="scanResiBtn" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-300" disabled>
+                Cek Resi & Muat Produk
+            </button>
+        </div>
+
+        <!-- STEP 3: SCAN SKU PRODUK (MULTI-ITEM CHECKLIST) -->
+        <div class="bg-white p-6 rounded-xl shadow-md mb-6 border-2 border-blue-400 hidden" id="boxSkuValidation">
+            <h2 class="text-xl font-semibold mb-3 text-blue-700">3️⃣ Wajib Scan Barcode Produk Fisik (Multi-Item)</h2>
+            
+            <div class="bg-blue-50 p-5 rounded-xl mb-4">
+                <p class="text-gray-600 text-sm mb-2">Nomor Resi Aktif: <strong id="activeResi" class="text-blue-900 text-base">-</strong></p>
+                <div>
+                    <p class="font-bold text-gray-800 mb-2">Daftar Produk & Nama Lengkap yang Harus Dipacking:</p>
+                    <ul id="itemListContainer" class="space-y-3">
+                        <!-- Item list will be injected here -->
+                    </ul>
+                </div>
+            </div>
+
+            <!-- BANNER PANDUAN BESAR TEPAT DI ATAS KOTAK SCAN -->
+            <div class="bg-amber-50 border-2 border-amber-300 p-4 rounded-xl mb-3 shadow-inner">
+                <span class="text-xs font-bold text-amber-800 uppercase tracking-wide block mb-1">🔍 PRODUK YANG SEDANG DI-SCAN:</span>
+                <p id="currentScanGuide" class="text-lg font-extrabold text-gray-900 leading-snug">-</p>
+                <div class="flex items-center gap-3 mt-2">
+                    <span id="currentScanSku" class="text-xs bg-amber-200 text-amber-900 px-2.5 py-1 rounded-md font-mono font-bold">-</span>
+                    <span id="currentScanTarget" class="text-xs bg-blue-200 text-blue-900 px-2.5 py-1 rounded-md font-bold">-</span>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Scan Barcode SKU Produk:</label>
+                <input type="text" id="skuInput" placeholder="Scan barcode produk satu per satu..." 
+                    class="w-full border border-gray-300 rounded-lg p-3 text-lg focus:ring-2 focus:ring-green-500 focus:outline-none" />
+            </div>
+
+            <!-- TOMBOL BYPASS MANUAL UNTUK PRODUK KAPSUL / BARCODE BURAM -->
+            <div class="mb-4">
+                <button onclick="bypassManualItem()" class="w-full bg-amber-500 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-amber-600 transition shadow text-sm flex items-center justify-center gap-2">
+                    ⚠️ Input Manual (Jika Barcode Kapsul Buram / Susah Scan)
+                </button>
+            </div>
+
+            <div class="flex gap-4">
+                <button onclick="batalScan()" class="w-full bg-gray-400 text-white py-3 rounded-lg hover:bg-gray-500 transition font-semibold">
+                    Batalkan / Reset Resi Ini
+                </button>
+            </div>
+        </div>
+
+        <!-- NOTIFICATION BOX -->
+        <div id="alertBox" class="hidden p-4 mb-6 rounded-xl text-lg font-bold text-center transition-all">
+            <span id="alertText"></span>
+        </div>
+
+        <!-- RIWAYAT RESI -->
+        <div class="bg-white p-6 rounded-xl shadow-md">
+            <h3 class="text-lg font-semibold text-gray-700 mb-3">📋 Riwayat Resi Selesai Dipacking (Tersimpan Permanen)</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-200 text-gray-700 text-sm">
+                            <th class="p-3">Waktu</th>
+                            <th class="p-3">Packer</th>
+                            <th class="p-3">No. Resi</th>
+                            <th class="p-3">Daftar Produk & Qty</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTable" class="text-sm text-gray-600">
+                        <tr><td colspan="4" class="p-4 text-center text-gray-400">Belum ada riwayat tersimpan.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let rawFilesData = [];
+        let databaseResi = {}; 
+        let scannedResiSet = new Set(); 
+        let historyList = [];
+        let currentActiveResiData = null; 
+        let allSkuSet = new Set();
+        let currentPacker = "";
+        
+        const FIXED_SHEET_URL = "https://script.google.com/macros/s/AKfycbwugA5dnxlLoEUOJUVrPFODVK_W8daaz59CdJo2B26rt82uwDk0r2OP3xNqtaP2xRDe/exec";
+
+        window.onload = function() {
+            // Cek apakah sudah login sebelumnya di sesi ini
+            const savedPacker = sessionStorage.getItem('nilaya_current_packer');
+            if (savedPacker) {
+                currentPacker = savedPacker;
+                tampilkanAplikasiUtama();
+            }
+        };
+
+        function prosesLogin() {
+            const nameInput = document.getElementById('loginName').value.trim();
+            const passInput = document.getElementById('loginPassword').value.trim();
+            const errorEl = document.getElementById('loginError');
+
+            if (!nameInput) {
+                errorEl.innerText = "Nama packer wajib diisi!";
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            if (passInput !== "1234") {
+                errorEl.innerText = "Password salah! Gunakan password: 1234";
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            currentPacker = nameInput;
+            sessionStorage.setItem('nilaya_current_packer', currentPacker);
+            tampilkanAplikasiUtama();
+        }
+
+        function tampilkanAplikasiUtama() {
+            document.getElementById('loginPage').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+            document.getElementById('activePackerName').innerText = currentPacker;
+
+            cekDanAutoReset3Hari();
+            loadFromLocalStorage();
+        }
+
+        function logoutApp() {
+            if (confirm("Yakin ingin keluar dari akun packer?")) {
+                sessionStorage.removeItem('nilaya_current_packer');
+                location.reload();
+            }
+        }
+
+        function cekDanAutoReset3Hari() {
+            const lastSaveTime = localStorage.getItem('nilaya_last_save_time');
+            const now = new Date().getTime();
+            
+            if (lastSaveTime) {
+                const selisihHari = (now - parseInt(lastSaveTime)) / (1000 * 60 * 60 * 24);
+                if (selisihHari >= 3) {
+                    clearAllLocalStorage();
+                    alert("🔄 Sistem melakukan Auto-Reset berkala (setiap 3 hari).");
+                    return;
+                }
+            } else {
+                localStorage.setItem('nilaya_last_save_time', now.toString());
+            }
+        }
+
+        function loadFromLocalStorage() {
+            const savedDb = localStorage.getItem('nilaya_database_resi');
+            const savedScanned = localStorage.getItem('nilaya_scanned_set');
+            const savedHistory = localStorage.getItem('nilaya_history_list');
+
+            if (savedDb) {
+                databaseResi = JSON.parse(savedDb);
+                rebuildSkuSet();
+                let count = Object.keys(databaseResi).length;
+                document.getElementById('fileStatus').innerHTML = `✅ Database Aktif: Memuat <b>${count}</b> nomor resi tersimpan di memori browser. Siap scan!`;
+                document.getElementById('fileStatus').className = "text-sm text-green-600 mt-2 font-semibold";
+                document.getElementById('resiInput').disabled = false;
+                document.getElementById('scanResiBtn').disabled = false;
+                document.getElementById('resiInput').focus();
+            }
+
+            if (savedScanned) {
+                scannedResiSet = new Set(JSON.parse(savedScanned));
+            }
+
+            if (savedHistory) {
+                historyList = JSON.parse(savedHistory);
+                renderHistoryTable();
+            }
+
+            updateStorageStatusText();
+        }
+
+        function saveToLocalStorage() {
+            localStorage.setItem('nilaya_database_resi', JSON.stringify(databaseResi));
+            localStorage.setItem('nilaya_scanned_set', JSON.stringify(Array.from(scannedResiSet)));
+            localStorage.setItem('nilaya_history_list', JSON.stringify(historyList));
+            localStorage.setItem('nilaya_last_save_time', new Date().getTime().toString());
+            updateStorageStatusText();
+        }
+
+        function updateStorageStatusText() {
+            let totalScanned = scannedResiSet.size;
+            document.getElementById('storageStatus').innerHTML = `💾 Status: <b>${totalScanned}</b> resi telah sukses dipacking (Tersimpan Aman di Browser).`;
+        }
+
+        function rebuildSkuSet() {
+            allSkuSet.clear();
+            for (let r in databaseResi) {
+                databaseResi[r].forEach(item => {
+                    let s = String(item.sku).trim();
+                    allSkuSet.add(s);
+                    allSkuSet.add(s.replace(/^0+/, ''));
+                });
+            }
+        }
+
+        document.getElementById('fileInput').addEventListener('change', async function(e) {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+
+            rawFilesData = [];
+            let loadedFilesCount = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                try {
+                    const data = await readFileAsync(file);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    let json = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
+
+                    if (json.length > 0) {
+                        let firstVal = String(Object.values(json[0])[0]).toLowerCase();
+                        if (firstVal.includes('platform unique') || firstVal.includes('current order') || firstVal.includes('the filed')) {
+                            json.shift();
+                        }
+                    }
+
+                    if (json.length > 0) {
+                        rawFilesData.push({
+                            fileName: file.name,
+                            rows: json,
+                            columns: Object.keys(json[0])
+                        });
+                        loadedFilesCount++;
+                    }
+                } catch (err) {
+                    console.error("Gagal baca file:", file.name, err);
+                }
+            }
+
+            if (rawFilesData.length === 0) {
+                alert("Tidak ada data valid yang bisa dibaca!");
+                return;
+            }
+
+            let allColumns = rawFilesData[0].columns;
+
+            let colResiEl = document.getElementById('colResi');
+            let colSkuEl = document.getElementById('colSku');
+            let colProdEl = document.getElementById('colProd');
+            let colQtyEl = document.getElementById('colQty');
+            
+            colResiEl.innerHTML = '';
+            colSkuEl.innerHTML = '';
+            colProdEl.innerHTML = '';
+            colQtyEl.innerHTML = '';
+
+            allColumns.forEach(col => {
+                let opt1 = document.createElement('option'); opt1.value = col; opt1.text = col;
+                let opt2 = document.createElement('option'); opt2.value = col; opt2.text = col;
+                let opt3 = document.createElement('option'); opt3.value = col; opt3.text = col;
+                let opt4 = document.createElement('option'); opt4.value = col; opt4.text = col;
+
+                let lower = col.toLowerCase();
+                if (lower.includes('resi') || lower.includes('tracking') || lower.includes('shipping number') || lower.includes('no. resi')) opt1.selected = true;
+                
+                if ((lower.includes('seller sku') || lower.includes('nomor referensi sku')) && !lower.includes('id')) {
+                    opt2.selected = true;
+                } else if (lower.includes('sku') && !lower.includes('id') && !lower.includes('platform')) {
+                    opt2.selected = true;
+                }
+
+                if (lower.includes('product name') || lower.includes('nama produk') || lower.includes('product')) opt3.selected = true;
+                if (lower.includes('qty') || lower.includes('jumlah') || lower.includes('quantity')) opt4.selected = true;
+
+                colResiEl.appendChild(opt1);
+                colSkuEl.appendChild(opt2);
+                colProdEl.appendChild(opt3);
+                colQtyEl.appendChild(opt4);
+            });
+
+            document.getElementById('columnMappingSection').classList.remove('hidden');
+            document.getElementById('fileStatus').innerHTML = `📁 Berhasil membaca <b>${loadedFilesCount} file marketplace</b>. Pastikan <b>Kolom SKU</b> terpilih ke <b>Seller SKU</b>, lalu klik tombol di bawah.`;
+            document.getElementById('fileStatus').className = "text-sm text-blue-600 mt-2 font-semibold";
+        });
+
+        function readFileAsync(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(new Uint8Array(e.target.result));
+                reader.onerror = (e) => reject(e);
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function terapkanMappingKolom() {
+            let selectedResiCol = document.getElementById('colResi').value;
+            let selectedSkuCol = document.getElementById('colSku').value;
+            let selectedProdCol = document.getElementById('colProd').value;
+            let selectedQtyCol = document.getElementById('colQty').value;
+
+            databaseResi = {};
+            let countResi = 0;
+
+            rawFilesData.forEach(fileObj => {
+                let cols = fileObj.columns;
+                let rCol = cols.includes(selectedResiCol) ? selectedResiCol : cols.find(c => c.toLowerCase().includes('resi') || c.toLowerCase().includes('tracking'));
+                let sCol = cols.includes(selectedSkuCol) ? selectedSkuCol : cols.find(c => c.toLowerCase().includes('seller sku') || c.toLowerCase().includes('nomor referensi') || (c.toLowerCase().includes('sku') && !c.toLowerCase().includes('id')));
+                let pCol = cols.includes(selectedProdCol) ? selectedProdCol : cols.find(c => c.toLowerCase().includes('product') || c.toLowerCase().includes('nama'));
+                let qCol = cols.includes(selectedQtyCol) ? selectedQtyCol : cols.find(c => c.toLowerCase().includes('qty') || c.toLowerCase().includes('jumlah'));
+
+                fileObj.rows.forEach(row => {
+                    let resi = String(rCol ? row[rCol] : (row['No. Resi'] || row['Tracking ID'] || "")).trim();
+                    let sku = String(sCol ? row[sCol] : (row['Nomor Referensi SKU'] || row['Seller SKU'] || "")).trim();
+                    let produk = String(pCol ? row[pCol] : (row['Nama Produk'] || row['Product Name'] || "")).trim();
+                    let qtyRaw = qCol ? row[qCol] : (row['Jumlah'] || row['Quantity'] || 1);
+                    let qty = qtyRaw ? parseInt(qtyRaw) : 1;
+                    if (isNaN(qty) || qty < 1) qty = 1;
+
+                    if (resi && !resi.toLowerCase().includes('platform unique')) {
+                        if (!databaseResi[resi]) {
+                            databaseResi[resi] = [];
+                            countResi++;
+                        }
+                        databaseResi[resi].push({
+                            sku: sku || "UNKNOWN SKU",
+                            produk: produk || "Produk Tanpa Nama",
+                            qty: qty,
+                            scannedCount: 0 
+                        });
+                    }
+                });
+            });
+
+            if (countResi > 0) {
+                rebuildSkuSet();
+                saveToLocalStorage();
+                document.getElementById('fileStatus').innerHTML = `✅ Berhasil menggabungkan <b>${countResi} nomor resi unik</b>! Siap scan.`;
+                document.getElementById('fileStatus').className = "text-sm text-green-600 mt-2 font-semibold";
+                document.getElementById('resiInput').disabled = false;
+                document.getElementById('scanResiBtn').disabled = false;
+                document.getElementById('resiInput').focus();
+            } else {
+                alert("Gagal memproses data. Pastikan kolom resi dipilih dengan benar.");
+            }
+        }
+
+        document.getElementById('resiInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') prosesResi();
+        });
+
+        function prosesResi() {
+            const resiInput = document.getElementById('resiInput');
+            const resi = resiInput.value.trim();
+
+            if (!resi) return;
+
+            if (allSkuSet.has(resi) || allSkuSet.has(resi.replace(/^0+/, ''))) {
+                tampilkanNotifikasi("merah", `⚠️ SALAH KOTAK SCAN! "${resi}" adalah BARCODE SKU/PRODUK, bukan Nomor Resi!`);
+                resiInput.value = "";
+                resiInput.focus();
+                return;
+            }
+
+            if (!databaseResi[resi]) {
+                tampilkanNotifikasi("merah", `❌ SALAH / TIDAK DITEMUKAN! Resi "${resi}" tidak ada dalam database.`);
+                resiInput.value = "";
+                resiInput.focus();
+                return;
+            }
+
+            if (scannedResiSet.has(resi)) {
+                tampilkanNotifikasi("merah", `⚠️ PERINGATAN! Resi "${resi}" SUDAH DIPACKING SEBELUMNYA!`);
+                resiInput.value = "";
+                resiInput.focus();
+                return;
+            }
+
+            currentActiveResiData = {
+                resi: resi,
+                items: JSON.parse(JSON.stringify(databaseResi[resi]))
+            };
+
+            document.getElementById('activeResi').innerText = resi;
+            renderItemList();
+
+            document.getElementById('alertBox').classList.add('hidden');
+            document.getElementById('boxSkuValidation').classList.remove('hidden');
+            document.getElementById('boxResi').classList.add('opacity-50', 'pointer-events-none');
+            
+            const skuInput = document.getElementById('skuInput');
+            skuInput.value = "";
+            skuInput.focus();
+        }
+
+        function renderItemList() {
+            const container = document.getElementById('itemListContainer');
+            container.innerHTML = '';
+
+            let firstIncompleteItem = null;
+
+            currentActiveResiData.items.forEach((item, index) => {
+                let sisa = item.qty - item.scannedCount;
+                if (sisa > 0 && !firstIncompleteItem) {
+                    firstIncompleteItem = item;
+                }
+
+                let statusBadge = sisa === 0 
+                    ? `<span class="bg-green-100 text-green-700 px-3 py-1 rounded-lg font-bold text-sm">✔ LENGKAP (${item.qty}/${item.qty})</span>` 
+                    : `<span class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-lg font-bold text-sm">Kurang ${sisa} dari ${item.qty}</span>`;
+
+                let li = document.createElement('li');
+                li.className = `p-4 rounded-xl border-2 ${sisa === 0 ? 'bg-green-50 border-green-300' : 'bg-white border-blue-200 shadow-sm'}`;
+                li.innerHTML = `
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                        <div>
+                            <p class="text-base font-bold text-gray-900 leading-snug">${item.produk}</p>
+                            <div class="flex items-center gap-3 mt-2">
+                                <span class="text-xs bg-gray-100 text-gray-700 px-2.5 py-1 rounded-md font-mono font-semibold">SKU: ${item.sku}</span>
+                                <span class="text-xs bg-blue-100 text-blue-800 px-2.5 py-1 rounded-md font-bold">Jumlah Pesanan: ${item.qty} pcs</span>
+                            </div>
+                        </div>
+                        <div class="mt-2 md:mt-0">${statusBadge}</div>
+                    </div>
+                `;
+                container.appendChild(li);
+            });
+
+            if (firstIncompleteItem) {
+                document.getElementById('currentScanGuide').innerText = firstIncompleteItem.produk;
+                document.getElementById('currentScanSku').innerText = `SKU: ${firstIncompleteItem.sku}`;
+                document.getElementById('currentScanTarget').innerText = `Target Scan: ${firstIncompleteItem.scannedCount} dari ${firstIncompleteItem.qty} pcs`;
+            } else {
+                document.getElementById('currentScanGuide').innerText = "Semua item sudah lengkap!";
+                document.getElementById('currentScanSku').innerText = "-";
+                document.getElementById('currentScanTarget').innerText = "-";
+            }
+        }
+
+        document.getElementById('skuInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') prosesScanSkuItem();
+        });
+
+        function prosesScanSkuItem() {
+            const skuInput = document.getElementById('skuInput');
+            const scannedSku = skuInput.value.trim();
+
+            if (!scannedSku) return;
+
+            const cleanScanned = scannedSku.replace(/^0+/, '');
+
+            let matchedItem = currentActiveResiData.items.find(item => {
+                let cleanExpected = String(item.sku).trim().replace(/^0+/, '');
+                return cleanScanned === cleanExpected && item.scannedCount < item.qty;
+            });
+
+            if (!matchedItem) {
+                let alreadyComplete = currentActiveResiData.items.find(item => {
+                    let cleanExpected = String(item.sku).trim().replace(/^0+/, '');
+                    return cleanScanned === cleanExpected;
+                });
+
+                if (alreadyComplete) {
+                    tampilkanNotifikasi("merah", `⚠️ KELEBIHAN QTY! Produk "${alreadyComplete.sku}" untuk resi ini sudah lengkap discan.`);
+                } else {
+                    tampilkanNotifikasi("merah", `❌ SALAH BARANG! Barcode fisik "${scannedSku}" TIDAK SESUAI dengan Seller SKU! Gunakan tombol input manual di bawah jika barcode buram.`);
+                }
+                skuInput.value = "";
+                skuInput.focus();
+                return;
+            }
+
+            selesaiScanItem(matchedItem);
+        }
+
+        function bypassManualItem() {
+            if (!currentActiveResiData) return;
+
+            let firstIncompleteItem = currentActiveResiData.items.find(item => item.scannedCount < item.qty);
+
+            if (!firstIncompleteItem) {
+                alert("Semua item pada resi ini sudah lengkap!");
+                return;
+            }
+
+            let konfirmasi = confirm(`⚠️ Konfirmasi Input Manual:\n\nApakah Anda yakin produk "${firstIncompleteItem.produk}" (SKU: ${firstIncompleteItem.sku}) sudah sesuai dan ingin diloloskan secara manual karena barcode buram/susah scan?`);
+            
+            if (konfirmasi) {
+                selisihItem(firstIncompleteItem);
+            }
+        }
+
+        function selisihItem(matchedItem) {
+            matchedItem.scannedCount++;
+            renderItemList();
+
+            const skuInput = document.getElementById('skuInput');
+            skuInput.value = "";
+            skuInput.focus();
+
+            let allComplete = currentActiveResiData.items.every(item => item.scannedCount === item.qty);
+
+            if (allComplete) {
+                const resi = currentActiveResiData.resi;
+                scannedResiSet.add(resi);
+
+                let primarySku = currentActiveResiData.items.map(i => i.sku).join(', ');
+                let primaryProd = currentActiveResiData.items.map(i => `${i.produk} [x${i.qty}]`).join(', ');
+                let totalQtyAll = currentActiveResiData.items.reduce((sum, i) => sum + i.qty, 0);
+
+                const record = {
+                    time: new Date().toLocaleTimeString() + ' ' + new Date().toLocaleDateString(),
+                    packer: currentPacker,
+                    resi: resi,
+                    sku: primarySku,
+                    produk: primaryProd,
+                    qty: totalQtyAll
+                };
+
+                historyList.unshift(record);
+                saveToLocalStorage();
+                renderHistoryTable();
+
+                tampilkanNotifikasi("hijau", `✅ RESI LENGKAP & VALID! Dipacking oleh ${currentPacker}. Silakan packing.`);
+                
+                currentActiveResiData.items.forEach(it => {
+                    kirimKeGoogleSheets(resi, it);
+                });
+
+                batalScan();
+            } else {
+                tampilkanNotifikasi("hijau", `👍 Item diloloskan manual! Lanjutkan produk berikutnya.`);
+            }
+        }
+
+        function selesaiScanItem(matchedItem) {
+            selisihItem(matchedItem);
+        }
+
+        function batalScan() {
+            currentActiveResiData = null;
+            document.getElementById('boxSkuValidation').classList.add('hidden');
+            document.getElementById('boxResi').classList.remove('opacity-50', 'pointer-events-none');
+            const resiInput = document.getElementById('resiInput');
+            resiInput.value = "";
+            resiInput.focus();
+        }
+
+        function renderHistoryTable() {
+            const tbody = document.getElementById('historyTable');
+            if (historyList.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400">Belum ada riwayat tersimpan.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = '';
+            historyList.forEach(item => {
+                const row = `<tr class="border-b hover:bg-gray-50">
+                    <td class="p-3">${item.time}</td>
+                    <td class="p-3 font-semibold text-purple-600">${item.packer || '-'}</td>
+                    <td class="p-3 font-semibold text-blue-600">${item.resi}</td>
+                    <td class="p-3">${item.produk}</td>
+                </tr>`;
+                tbody.insertAdjacentHTML('beforeend', row);
+            });
+        }
+
+        function tampilkanNotifikasi(tipe, pesan) {
+            const alertBox = document.getElementById('alertBox');
+            const alertText = document.getElementById('alertText');
+            
+            alertBox.classList.add('hidden');
+            setTimeout(() => {
+                alertBox.classList.remove('hidden');
+                if (tipe === "merah") {
+                    alertBox.className = "p-4 mb-6 rounded-xl text-lg font-bold text-center bg-red-100 text-red-700 border-2 border-red-400";
+                } else {
+                    alertBox.className = "p-4 mb-6 rounded-xl text-lg font-bold text-center bg-green-100 text-green-700 border-2 border-green-400";
+                }
+                alertText.innerText = pesan;
+            }, 50);
+        }
+
+        function resetDataHariIni() {
+            if (confirm("Yakin ingin mereset sesi dan riwayat packing?")) {
+                scannedResiSet.clear();
+                historyList = [];
+                localStorage.removeItem('nilaya_scanned_set');
+                localStorage.removeItem('nilaya_history_list');
+                renderHistoryTable();
+                updateStorageStatusText();
+                alert("Sesi berhasil direset.");
+            }
+        }
+
+        function clearAllLocalStorage() {
+            if (confirm("Yakin ingin menghapus seluruh cache dan database resi tersimpan?")) {
+                localStorage.clear();
+                databaseResi = {};
+                scannedResiSet.clear();
+                historyList = [];
+                location.reload();
+            }
+        }
+
+        function kirimKeGoogleSheets(resi, itemData) {
+            const payload = {
+                timestamp: new Date().toLocaleString(),
+                packer: currentPacker,
+                resi: resi,
+                sku: itemData.sku,
+                produk: itemData.produk,
+                qty: itemData.qty
+            };
+
+            fetch(FIXED_SHEET_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).catch(error => {
+                console.error('Gagal kirim ke Google Sheets:', error);
+            });
+        }
+    </script>
+</body>
+</html>
